@@ -1,414 +1,337 @@
 """
-Programme principal : étude de la convergence des méthodes d'intégration.
-
-Ce script compare la précision des méthodes de Newton-Cotes, de l'intégration
-adaptative et de la quadrature de Gauss-Legendre pour plusieurs fonctions tests,
-en faisant varier le nombre de sous-intervalles et en analysant la convergence.
-
-Fonctions tests utilisées :
-    f1(x) = sin(x)        sur [0, π]    → valeur exacte : 2
-    f2(x) = exp(x)        sur [0, 1]    → valeur exacte : e - 1
-    f3(x) = 1/(1 + x²)   sur [0, 1]    → valeur exacte : π/4
-    f4(x) = x * ln(x+1)  sur [0, 2]    → valeur exacte : 2*ln(3) - 3/2
+=============================================================
+  Projet Analyse Numérique — main.py
+  Interpolation + Intégration + Problèmes réels
+=============================================================
 """
-
-import math
 import os
+import sys
+import math
+import numpy as np
+import pandas as pd
 
-import matplotlib.pyplot as plt
-
-from src.integration import AdaptiveIntegration, GaussQuadrature, NewtonCotes
-
-# ─────────────────────────────────────────────────────────────────
-# Définition des fonctions tests et de leurs valeurs exactes
-# ─────────────────────────────────────────────────────────────────
-
-TEST_FUNCTIONS = [
-    {
-        "name": "exp(x) sur [0, 1]",
-        "f": math.exp,
-        "a": 0.0,
-        "b": 1.0,
-        "exact": math.e - 1,
-    },
-    # Fonction test pour l'annexe A.3 : f(x) = e^x sur [0,1]
-    # Valeur exacte: ∫₀¹ e^x dx = e - 1 ≈ 1.718281828459045
-]
+from src.interpolation import PolynomialInterpolation
+from src.integration import NewtonCotes, AdaptiveIntegration
+from src.problems import CoolingProblem, FlowProblem
+from src.visualization import Visualizer
 
 
-# Valeurs de n testées pour les méthodes Newton-Cotes
-N_VALUES = [2, 4, 8, 16, 32, 64, 128]
+# =============================================================
+# 1. TEST SIMPLE — f(x) = eˣ sur [0,1]  (valeur exacte = e-1)
+# =============================================================
+
+def test_simple():
+    """Test simple d'interpolation et intégration."""
+    print("\n" + "=" * 70)
+    print("  TEST SIMPLE — f(x) = eˣ, ∫₀¹ eˣ dx = e-1")
+    print("=" * 70)
+
+    x_pts = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
+    y_pts = np.exp(x_pts)
+    interp = PolynomialInterpolation(x_pts, y_pts)
+
+    print("\n  📌 Interpolation :")
+    for x_q in [0.3, 0.6, 0.9]:
+        exact = np.exp(x_q)
+        lag = interp.evaluate(x_q, 'lagrange')
+        new = interp.evaluate(x_q, 'newton')
+        print(f"    eˣ({x_q}) exact={exact:.6f} | Lagrange={lag:.6f} | Newton={new:.6f}")
+
+    exact_int = np.e - 1
+    f = np.exp
+    ai = AdaptiveIntegration()
+    
+    print(f"\n  📌 Intégration ∫₀¹ eˣ dx (exact = {exact_int:.8f})")
+    for name, val in [
+        ("Rectangle  ", NewtonCotes.rectangle(f, 0, 1, 100)),
+        ("Trapèze    ", NewtonCotes.trapezoidal(f, 0, 1, 100)),
+        ("Simpson    ", NewtonCotes.simpson(f, 0, 1, 100)),
+        ("Adaptatif  ", ai.adaptive_simpson(f, 0, 1)),
+    ]:
+        error = abs(val - exact_int)
+        print(f"    {name}: {val:.8f}  (erreur = {error:.2e})")
 
 
-# ─────────────────────────────────────────────────────────────────
-# Fonctions utilitaires d'affichage
-# ─────────────────────────────────────────────────────────────────
+# =============================================================
+# 2. PHÉNOMÈNE DE RUNGE + TCHEBYCHEV 
+# =============================================================
 
-def print_separator(char="-", width=72):
-    """Affiche une ligne de séparation."""
-    print(char * width)
-
-
-def print_header(title):
-    """Affiche un en-tête de section."""
-    print_separator("=")
-    print(f"  {title}")
-    print_separator("=")
-
-
-def print_subheader(title):
-    """Affiche un sous-titre de section."""
-    print_separator()
-    print(f"  {title}")
-    print_separator()
-
-
-def format_error(error):
-    """Formate une erreur absolue en notation scientifique."""
-    return f"{error:.2e}"
-
-
-# ─────────────────────────────────────────────────────────────────
-# Étude de convergence — méthodes Newton-Cotes
-# ─────────────────────────────────────────────────────────────────
-
-def study_newton_cotes(func_info):
+def test_runge():
+    """Test du phénomène de Runge — Nœuds équidistants vs Tchebychev.
+    
+    ⚠️ Nécessite demonstrate_runge() du module interpolation.
     """
-    Étudie la convergence des méthodes de Newton-Cotes pour une fonction donnée.
+    print("\n" + "=" * 70)
+    print("  PHÉNOMÈNE DE RUNGE — équidistants vs Tchebychev")
+    print("=" * 70)
+    
+    try:
+        from src.interpolation import demonstrate_runge
+        
+        data = demonstrate_runge([5, 10, 15, 20])
+        print(f"\n  {'n':>4}  {'Erreur équidist.':>18}  {'Erreur Tchebychev':>18}")
+        for n in [5, 10, 15, 20]:
+            e_u = data["uniform"][n]["max_error"]
+            e_c = data["chebyshev"][n]["max_error"]
+            print(f"  {n:>4}  {e_u:>18.6f}  {e_c:>18.6f}")
+        return data
+    except ImportError:
+        print("  ⚠️  demonstrate_runge() non disponible")
+        return None
 
-    Affiche un tableau comparatif des erreurs absolues en fonction de n
-    pour les méthodes rectangle, trapèzes et Simpson 1/3.
 
-    Paramètres
-    ----------
-    func_info : dict
-        Dictionnaire avec les clés 'name', 'f', 'a', 'b', 'exact'.
+# =============================================================
+# 3. ANALYSE DE CONVERGENCE — ∫₀¹ eˣ dx 
+# =============================================================
+
+def test_convergence():
+    """Analyse de convergence pour ∫₀¹ eˣ dx.
+    
+    ⚠️ Nécessite convergence_analysis() du module integration.
     """
-    f = func_info["f"]
-    a = func_info["a"]
-    b = func_info["b"]
-    exact = func_info["exact"]
+    print("\n" + "=" * 70)
+    print("  CONVERGENCE — ∫₀¹ eˣ dx (exact = e-1)")
+    print("=" * 70)
+    
+    try:
+        from src.integration import convergence_analysis
+        
+        exact = np.e - 1
+        errors = convergence_analysis(np.exp, 0, 1, exact,
+                                      n_list=[2, 4, 8, 16, 32, 64, 128, 256])
+        print(f"\n  {'n':>5}  {'Rectangle':>12}  {'Trapèze':>12}  {'Simpson':>12}")
+        for i, n in enumerate(errors["n"]):
+            r = errors["rectangle"][i]
+            t = errors["trapezoidal"][i]
+            s = errors["simpson"][i]
+            print(f"  {n:>5}  {r:>12.2e}  {t:>12.2e}  {s:>12.2e}")
+        return errors
+    except ImportError:
+        print("  ⚠️  convergence_analysis() non disponible")
+        return None
 
-    print_subheader(f"Fonction : {func_info['name']}  (valeur exacte = {exact:.10f})")
 
-    col_w = 14
-    header = (
-        f"{'n':>6}  "
-        f"{'Rectangle':>{col_w}}  "
-        f"{'Trapèzes':>{col_w}}  "
-        f"{'Simpson 1/3':>{col_w}}  "
-        f"{'Simpson 3/8':>{col_w}}"
+# =============================================================
+# 4. PROBLÈME DE REFROIDISSEMENT
+# =============================================================
+
+def test_cooling():
+    """Test du problème de refroidissement avec données CSV."""
+    print("\n" + "=" * 70)
+    print("  PROBLÈME DE REFROIDISSEMENT")
+    print("=" * 70)
+    
+    csv_path = "data/cooling.csv"
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        cp = CoolingProblem(df["t"].values, df["T"].values, T_ambient=20.0, h_coeff=50.0)
+        cp.report()
+        return cp
+    else:
+        print(f"\n  ⚠️  Fichier {csv_path} introuvable.")
+        print("  Utilisation de données synthétiques...\n")
+        
+        # Données synthétiques
+        t_data = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        T_data = np.array([100, 85.5, 73.6, 63.9, 56.1, 49.9, 44.9, 40.8, 37.4, 34.6, 32.3])
+        cp = CoolingProblem(t_data, T_data, T_ambient=20.0, h_coeff=50.0)
+        cp.report()
+        return cp
+
+
+# =============================================================
+# 5. PROBLÈME D'ÉCOULEMENT
+# =============================================================
+
+def test_flow():
+    """Test du problème d'écoulement avec données CSV."""
+    print("\n" + "=" * 70)
+    print("  PROBLÈME D'ÉCOULEMENT")
+    print("=" * 70)
+    
+    csv_path = "data/flow.csv"
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        fp = FlowProblem(df["x"].values, df["v"].values)
+        fp.report()
+        return fp
+    else:
+        print(f"\n  ⚠️  Fichier {csv_path} introuvable.")
+        print("  Utilisation de données synthétiques...\n")
+        
+        # Données synthétiques
+        x_data = np.array([0, 1, 2, 3, 4, 5, 6])
+        v_data = np.array([0.5, 0.8, 1.1, 1.3, 1.4, 1.3, 1.0])
+        fp = FlowProblem(x_data, v_data)
+        fp.report()
+        return fp
+
+
+# =============================================================
+# 6. VISUALISATIONS
+# =============================================================
+
+def generate_visualizations(cp, fp, runge_data=None, errors_data=None):
+    """Génère tous les graphes de visualisation."""
+    print("\n" + "=" * 70)
+    print("  GÉNÉRATION DES VISUALISATIONS")
+    print("=" * 70)
+    
+    os.makedirs("results", exist_ok=True)
+    viz = Visualizer(figsize=(12, 6))
+    
+    # ─── Refroidissement ──────────────────────────────────────
+    print("\n  📊 Cooling Problem...")
+    
+    # Points fins pour tracé lisse
+    t_fine = np.linspace(cp.t_data[0], cp.t_data[-1], 300)
+    T_interp = cp.temperature(t_fine, method='newton')
+    
+    # Modèle exponentiel optimal
+    k_opt = cp.estimate_k()
+    T_model = cp.exponential_model(t_fine, k_opt)
+    
+    # Graphe complet
+    fig1 = viz.plot_cooling_analysis(cp.t_data, cp.T_data, t_fine, T_interp, k_opt, T_model)
+    fig1.savefig("results/01_cooling_analysis.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 01_cooling_analysis.png")
+    
+    # Comparaison interpolations
+    T_lag = cp.temperature(t_fine, method='lagrange')
+    fig2 = viz.plot_interpolation_comparison(
+        cp.t_data, cp.T_data,
+        {"Lagrange": T_lag, "Newton": T_interp},
+        t_fine,
+        title="Interpolation — Refroidissement"
     )
-    print(header)
-    print_separator("-")
-
-    for n in N_VALUES:
-        # Simpson 3/8 nécessite n multiple de 3 → ajustement
-        n38 = n if n % 3 == 0 else n + (3 - n % 3)
-
-        rect = NewtonCotes.rectangle(f, a, b, n)
-        trap = NewtonCotes.trapezoidal(f, a, b, n)
-        simp = NewtonCotes.simpson(f, a, b, n)
-        simp38 = NewtonCotes.simpson_38(f, a, b, n38)
-
-        err_rect = abs(rect - exact)
-        err_trap = abs(trap - exact)
-        err_simp = abs(simp - exact)
-        err_s38 = abs(simp38 - exact)
-
-        print(
-            f"{n:>6}  "
-            f"{format_error(err_rect):>{col_w}}  "
-            f"{format_error(err_trap):>{col_w}}  "
-            f"{format_error(err_simp):>{col_w}}  "
-            f"{format_error(err_s38):>{col_w}}"
-        )
-
-
-# ─────────────────────────────────────────────────────────────────
-# Étude de convergence — intégration adaptative
-# ─────────────────────────────────────────────────────────────────
-
-def study_adaptive(func_info):
-    """
-    Étudie la précision de la méthode de Simpson adaptative pour
-    différentes tolérances.
-
-    Paramètres
-    ----------
-    func_info : dict
-        Dictionnaire avec les clés 'name', 'f', 'a', 'b', 'exact'.
-    """
-    f = func_info["f"]
-    a = func_info["a"]
-    b = func_info["b"]
-    exact = func_info["exact"]
-
-    tolerances = [1e-2, 1e-4, 1e-6, 1e-8, 1e-10]
-
-    print_subheader(f"Fonction : {func_info['name']}  (valeur exacte = {exact:.10f})")
-    print(f"{'Tolérance':>12}  {'Résultat':>18}  {'Erreur absolue':>16}")
-    print_separator("-")
-
-    for tol in tolerances:
-        integrator = AdaptiveIntegration(tol=tol)
-        result = integrator.adaptive_simpson(f, a, b)
-        error = abs(result - exact)
-        print(f"{tol:>12.2e}  {result:>18.12f}  {format_error(error):>16}")
-
-
-# ─────────────────────────────────────────────────────────────────
-# Comparaison avec la quadrature de Gauss
-# ─────────────────────────────────────────────────────────────────
-
-def study_gauss(func_info):
-    """
-    Compare la quadrature de Gauss-Legendre (2 et 3 points) avec
-    les méthodes Newton-Cotes de référence pour une fonction donnée.
-
-    Paramètres
-    ----------
-    func_info : dict
-        Dictionnaire avec les clés 'name', 'f', 'a', 'b', 'exact'.
-    """
-    f = func_info["f"]
-    a = func_info["a"]
-    b = func_info["b"]
-    exact = func_info["exact"]
-
-    print_subheader(f"Fonction : {func_info['name']}  (valeur exacte = {exact:.10f})")
-
-    methods = [
-        ("Rectangle  (n=1)", NewtonCotes.rectangle(f, a, b, 1)),
-        ("Trapèzes   (n=1)", NewtonCotes.trapezoidal(f, a, b, 1)),
-        ("Simpson    (n=2)", NewtonCotes.simpson(f, a, b, 2)),
-        ("Gauss-2pts      ", GaussQuadrature.gauss_legendre_2(f, a, b)),
-        ("Gauss-3pts      ", GaussQuadrature.gauss_legendre_3(f, a, b)),
-    ]
-
-    print(f"{'Méthode':>20}  {'Résultat':>18}  {'Erreur':>14}")
-    print_separator("-")
-    for name, result in methods:
-        error = abs(result - exact)
-        print(f"{name:>20}  {result:>18.12f}  {format_error(error):>14}")
-
-
-# ─────────────────────────────────────────────────────────────────
-# Analyse des ordres de convergence
-# ─────────────────────────────────────────────────────────────────
-
-def estimate_convergence_order(func_info):
-    """
-    Estime empiriquement l'ordre de convergence de chaque méthode
-    en calculant le rapport log(err_n / err_2n) / log(2).
-
-    Un ordre ≈ 2 pour les trapèzes, ≈ 4 pour Simpson est attendu.
-
-    Paramètres
-    ----------
-    func_info : dict
-        Dictionnaire avec les clés 'name', 'f', 'a', 'b', 'exact'.
-    """
-    f = func_info["f"]
-    a = func_info["a"]
-    b = func_info["b"]
-    exact = func_info["exact"]
-
-    print_subheader(f"Ordres de convergence — {func_info['name']}")
-
-    ns = [4, 8, 16, 32, 64]
-
-    def order(err1, err2):
-        """Calcule l'ordre empirique entre deux niveaux successifs."""
-        if err1 == 0 or err2 == 0:
-            return float("inf")
-        return math.log(err1 / err2) / math.log(2)
-
-    print(f"{'n':>6}  {'p_trap':>10}  {'p_simp':>10}")
-    print_separator("-")
-
-    prev_trap = abs(NewtonCotes.trapezoidal(f, a, b, ns[0]) - exact)
-    prev_simp = abs(NewtonCotes.simpson(f, a, b, ns[0]) - exact)
-
-    for n in ns[1:]:
-        curr_trap = abs(NewtonCotes.trapezoidal(f, a, b, n) - exact)
-        curr_simp = abs(NewtonCotes.simpson(f, a, b, n) - exact)
-
-        p_trap = order(prev_trap, curr_trap)
-        p_simp = order(prev_simp, curr_simp)
-
-        print(f"{n:>6}  {p_trap:>10.3f}  {p_simp:>10.3f}")
-
-        prev_trap = curr_trap
-        prev_simp = curr_simp
-
-
-# ─────────────────────────────────────────────────────────────────
-# Analyse complète (section 4.2 du projet)
-# ─────────────────────────────────────────────────────────────────
-
-def analyze_integration_convergence():
-    """
-    Analyse complète de l'intégration numérique (section 4.2 du projet).
+    fig2.savefig("results/02_cooling_interpolations.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 02_cooling_interpolations.png")
     
-    Cette fonction réalise :
-    1. Calcul des erreurs pour f(x)=e^x sur [0,1]
-    2. Tracé des courbes d'erreur en échelle log-log
-    3. Comparaison adaptive vs Simpson composé (n=100)
-    """
-    import os
-    from src.visualization import Visualizer
+    # ─── Écoulement ───────────────────────────────────────────
+    print("\n  📊 Flow Problem...")
     
-    print_subheader("ANALYSE COMPLÈTE - Section 4.2")
+    # Points fins pour tracé
+    x_fine = np.linspace(fp.x_data[0], fp.x_data[-1], 300)
+    v_interp = fp.velocity(x_fine, method='newton')
     
-    # Fonction test : f(x) = e^x sur [0, 1]
-    f = math.exp
-    a, b = 0.0, 1.0
-    exact = math.e - 1  # ≈ 1.718281828459045
+    # Graphe complet
+    fig3 = viz.plot_flow_analysis(fp.x_data, fp.v_data, x_fine, v_interp, fp.width_func)
+    fig3.savefig("results/03_flow_analysis.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 03_flow_analysis.png")
     
-    print(f"Fonction test: f(x) = e^x sur [0, 1]")
-    print(f"Valeur exacte: {exact:.15f}")
-    print()
+    # Comparaison interpolations
+    v_lag = fp.velocity(x_fine, method='lagrange')
+    fig4 = viz.plot_interpolation_comparison(
+        fp.x_data, fp.v_data,
+        {"Lagrange": v_lag, "Newton": v_interp},
+        x_fine,
+        title="Interpolation — Écoulement"
+    )
+    fig4.savefig("results/04_flow_interpolations.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 04_flow_interpolations.png")
     
-    # Valeurs de n testées
-    n_values = [2, 4, 8, 16, 32, 64, 128, 256]
+    # ─── Convergence intégration (Cooling) ────────────────────
+    print("\n  📊 Convergence (Cooling)...")
     
-    # Calcul des erreurs pour chaque méthode
-    errors_rect = []
-    errors_trap = []
-    errors_simp = []
-    errors_s38 = []
-    
-    print(f"{'n':>6}  {'Rectangle':>14}  {'Trapèzes':>14}  {'Simpson 1/3':>14}  {'Simpson 3/8':>14}")
-    print_separator("-")
-    
-    for n in n_values:
-        # Rectangle (point milieu)
-        rect = NewtonCotes.rectangle(f, a, b, n)
-        # Trapèzes
-        trap = NewtonCotes.trapezoidal(f, a, b, n)
-        # Simpson 1/3
-        simp = NewtonCotes.simpson(f, a, b, n)
-        # Simpson 3/8
-        n38 = n if n % 3 == 0 else n + (3 - n % 3)
-        simp38 = NewtonCotes.simpson_38(f, a, b, n38)
-        
-        err_rect = abs(rect - exact)
-        err_trap = abs(trap - exact)
-        err_simp = abs(simp - exact)
-        err_s38 = abs(simp38 - exact)
-        
-        errors_rect.append(err_rect)
-        errors_trap.append(err_trap)
-        errors_simp.append(err_simp)
-        errors_s38.append(err_s38)
-        
-        print(f"{n:>6}  {err_rect:>14.2e}  {err_trap:>14.2e}  {err_simp:>14.2e}  {err_s38:>14.2e}")
-    
-    print()
-    
-    # Tracé des courbes de convergence
-    visualizer = Visualizer()
-    
-    errors_dict = {
-        'Rectangle (ordre 1)': errors_rect,
-        'Trapèzes (ordre 2)': errors_trap,
-        'Simpson 1/3 (ordre 4)': errors_simp,
-        'Simpson 3/8 (ordre 4)': errors_s38
+    Q_ref = cp.total_heat_loss(method='adaptive')
+    n_values = [5, 10, 20, 50, 100, 200, 500]
+    errors = {
+        "Trapèze": [abs(cp.total_heat_loss(method='trapeze', n=n) - Q_ref) for n in n_values],
+        "Simpson": [abs(cp.total_heat_loss(method='simpson', n=n) - Q_ref) for n in n_values],
     }
     
-    fig = visualizer.plot_convergence(
-        n_values,
-        errors_dict,
-        title="Convergence des méthodes d'intégration - f(x)=e^x sur [0,1]",
-        xlabel="Nombre de subdivisions n",
-        ylabel="Erreur absolue"
+    fig5 = viz.plot_convergence(
+        n_values, errors,
+        title="Convergence — Chaleur dissipée",
+        ylabel="Erreur absolue |Q_n - Q_ref|"
     )
+    fig5.savefig("results/05_cooling_convergence.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 05_cooling_convergence.png")
     
-    # Sauvegarder le graphique
-    results_dir = "results"
-    if not os.path.exists(results_dir):
-        os.makedirs(results_dir)
+    # ─── Convergence intégration (Flow) ───────────────────────
+    print("\n  📊 Convergence (Flow)...")
     
-    fig.savefig(os.path.join(results_dir, "convergence_integration.png"), dpi=150)
-    print(f"Graphique sauvegardé: results/convergence_integration.png")
-    plt.close(fig)
+    D_ref = fp.total_flow_rate(method='adaptive')
+    errors = {
+        "Trapèze": [abs(fp.total_flow_rate(method='trapeze', n=n) - D_ref) for n in n_values],
+        "Simpson": [abs(fp.total_flow_rate(method='simpson', n=n) - D_ref) for n in n_values],
+    }
     
-    print()
+    fig6 = viz.plot_convergence(
+        n_values, errors,
+        title="Convergence — Débit volumique",
+        ylabel="Erreur absolue |D_n - D_ref|"
+    )
+    fig6.savefig("results/06_flow_convergence.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 06_flow_convergence.png")
     
-    # Comparaison adaptive vs Simpson composé (n=100)
-    print_subheader("Comparaison: Simpson adaptatif vs Simpson composé (n=100)")
+    # ─── Runge  ─────────────────────────────
+    if runge_data:
+        print("\n  📊 Runge (Travail des amis)...")
+        fig7 = viz.plot_runge_phenomenon(runge_data["x_fine"], runge_data["y_true"], runge_data)
+        fig7.savefig("results/07_runge_phenomenon.png", dpi=300, bbox_inches='tight')
+        print("     ✅ 07_runge_phenomenon.png")
     
-    # Simpson composé avec n=100
-    simp_100 = NewtonCotes.simpson(f, a, b, 100)
-    err_simp_100 = abs(simp_100 - exact)
+    # ─── Convergence générale  ──────────────
+    if errors_data:
+        print("\n  📊 Convergence générale (Travail des amis)...")
+        errors_dict = {
+            "Rectangle":   errors_data["rectangle"],
+            "Trapèze":     errors_data["trapezoidal"],
+            "Simpson":     errors_data["simpson"],
+        }
+        fig8 = viz.plot_convergence(
+            errors_data["n"],
+            errors_dict,
+            title="Convergence — ∫₀¹ eˣ dx (tous les amis)"
+        )
+        fig8.savefig("results/08_convergence_general.png", dpi=300, bbox_inches='tight')
+        print("     ✅ 08_convergence_general.png")
     
-    # Simpson adaptatif avec différentes tolérances
-    print(f"{'Tolérance':>14}  {'Résultat':>18}  {'Erreur':>14}  {'Évaluations':>12}")
-    print_separator("-")
+    # ─── Comparaison des méthodes d'intégration (Travail des amis) ─────
+    print("\n  📊 Comparaison des méthodes (Travail des amis)...")
+    fig9 = viz.plot_integration_comparison(
+        f=math.exp,
+        a=0, b=1,
+        n_values=[2, 4, 8, 16, 32, 64, 128],
+        methods_dict={
+            "Rectangle":  NewtonCotes.rectangle,
+            "Trapèze":    NewtonCotes.trapezoidal,
+            "Simpson":    NewtonCotes.simpson,
+        },
+        exact_value=math.e - 1,
+        title="Comparaison des méthodes — ∫₀¹ eˣ dx"
+    )
+    fig9.savefig("results/09_methods_comparison.png", dpi=300, bbox_inches='tight')
+    print("     ✅ 09_methods_comparison.png")
     
-    for tol in [1e-2, 1e-4, 1e-6, 1e-8]:
-        integrator = AdaptiveIntegration(tol=tol)
-        result = integrator.adaptive_simpson(f, a, b)
-        err = abs(result - exact)
-        print(f"{tol:>14.2e}  {result:>18.12f}  {err:>14.2e}  {'variable':>12}")
-    
-    print(f"{'Simpson n=100':>14}  {simp_100:>18.12f}  {err_simp_100:>14.2e}  {'101':>12}")
-    
-    print()
-    print("Analyse: L'intégration adaptative ajuste automatiquement le nombre")
-    print("         de subdivisions pour atteindre la tolérance souhaitée.")
-    print("         Avantage: précision ciblée avec moins d'évaluations.")
-    
-    return n_values, errors_dict
+    print("\n  ✅ Toutes les visualisations générées dans 'results/'")
 
 
-# ─────────────────────────────────────────────────────────────────
-# Programme principal
-# ─────────────────────────────────────────────────────────────────
-
-def main():
-    """
-    Point d'entrée du programme.
-
-    Lance toutes les études de convergence pour les méthodes
-    d'intégration numérique implémentées.
-    """
-    print_header("ÉTUDE DE CONVERGENCE DES MÉTHODES D'INTÉGRATION NUMÉRIQUE")
-
-    # ── 1. Méthodes de Newton-Cotes ──────────────────────────────
-    print_header("1. MÉTHODES DE NEWTON-COTES — Erreurs en fonction de n")
-    for func_info in TEST_FUNCTIONS:
-        study_newton_cotes(func_info)
-        print()
-
-    # ── 2. Intégration adaptative ────────────────────────────────
-    print_header("2. INTÉGRATION ADAPTATIVE (Simpson) — Précision vs tolérance")
-    for func_info in TEST_FUNCTIONS:
-        study_adaptive(func_info)
-        print()
-
-    # ── 3. Quadrature de Gauss (bonus) ───────────────────────────
-    print_header("3. QUADRATURE DE GAUSS-LEGENDRE (BONUS) — Comparaison globale")
-    for func_info in TEST_FUNCTIONS:
-        study_gauss(func_info)
-        print()
-
-    # ── 4. Ordres de convergence empiriques ──────────────────────
-    print_header("4. ORDRES DE CONVERGENCE EMPIRIQUES")
-    for func_info in TEST_FUNCTIONS:
-        estimate_convergence_order(func_info)
-        print()
-
-    # ── 5. Analyse complète (section 4.2) ────────────────────────
-    print_header("5. ANALYSE COMPLÈTE - SECTION 4.2 DU PROJET")
-    analyze_integration_convergence()
-    print()
-
-    print_separator("=")
-    print("  Fin du programme.")
-    print_separator("=")
-
+# =============================================================
+# MAIN
+# =============================================================
 
 if __name__ == "__main__":
-    main()
+    print("\n" + "=" * 70)
+    print("  PROJET ANALYSE NUMÉRIQUE")
+    print("  Interpolation Polynomiale + Intégration + Problèmes Réels")
+    print("=" * 70)
+    
+    # Tests de base
+    test_simple()
+    
+   
+    runge_data = test_runge()
+    errors_data = test_convergence()
+    
+    # Problèmes réels
+    cp = test_cooling()
+    fp = test_flow()
+    
+    # Visualisations (incluant les graphes des amis)
+    generate_visualizations(cp, fp, runge_data, errors_data)
+    
+    print("\n" + "=" * 70)
+    print("  ✅ PROGRAMME TERMINÉ AVEC SUCCÈS")
+    print("=" * 70 + "\n")
