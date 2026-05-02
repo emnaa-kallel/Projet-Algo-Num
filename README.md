@@ -48,6 +48,7 @@ TP_Analyse_Numerique/
 ## Exécution
 python main.py
 ## Fonctionnalités
+```
 Interpolation de données expérimentales
 Calcul de températures intermédiaires
 Calcul de la chaleur dissipée
@@ -55,7 +56,7 @@ Calcul du débit volumique
 Étude du phénomène de Runge
 Analyse de convergence des méthodes d’intégration
 Visualisation graphique des résultats
-
+```
 ## Technologies utilisées
 Python 3
 NumPy
