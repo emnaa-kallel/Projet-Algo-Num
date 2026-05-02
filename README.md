@@ -19,7 +19,7 @@ L’objectif est de reconstruire une fonction continue à partir de données dis
 - Résoudre un problème inverse d’estimation de paramètre  
 
 ## Structure du projet
-
+```
 TP_Analyse_Numerique/
 │
 ├── main.py
@@ -44,6 +44,7 @@ TP_Analyse_Numerique/
 │
 ├── requirements.txt
 └── README.md
+```
 ## Exécution
 python main.py
 ## Fonctionnalités
