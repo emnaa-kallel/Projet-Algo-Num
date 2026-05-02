@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 
 class Visualizer:
@@ -8,7 +9,7 @@ class Visualizer:
     interpolation, convergence, Runge, refroidissement et écoulement.
     """
 
-    def __init__(self, style="seaborn-v0_8-darkgrid", figsize=(10, 6)):
+    def __init__(self, style="seaborn-v0_8-darkgrid", figsize=(10, 6), results_dir="results"):
         """
         Initialise le visualiseur.
 
@@ -18,12 +19,16 @@ class Visualizer:
             Style matplotlib utilisé pour les graphiques.
         figsize : tuple
             Taille des figures.
+        results_dir : str
+            Répertoire où sauvegarder les figures.
         """
         try:
          plt.style.use(style)
         except:
             plt.style.use("default")
         self.figsize = figsize
+        self.results_dir = results_dir
+        os.makedirs(results_dir, exist_ok=True)
 
     # =========================
     # INTERPOLATION
@@ -56,7 +61,9 @@ class Visualizer:
         plt.title(title)
         plt.legend()
         plt.grid()
-        plt.show()
+        filepath = os.path.join(self.results_dir, "interpolation_comparison.png")
+        plt.savefig(filepath, dpi=150, bbox_inches="tight")
+        plt.close()
 
     # =========================
     # RUNGE
@@ -84,7 +91,9 @@ class Visualizer:
         plt.title("Phénomène de Runge")
         plt.legend()
         plt.grid()
-        plt.show()
+        filepath = os.path.join(self.results_dir, "runge_phenomenon.png")
+        plt.savefig(filepath, dpi=150, bbox_inches="tight")
+        plt.close()
 
     # =========================
     # CONVERGENCE
@@ -117,7 +126,9 @@ class Visualizer:
         plt.ylabel("Erreur")
         plt.legend()
         plt.grid(True, which="both")
-        plt.show()
+        filepath = os.path.join(self.results_dir, "convergence.png")
+        plt.savefig(filepath, dpi=150, bbox_inches="tight")
+        plt.close()
 
     # =========================
     # REFROIDISSEMENT
@@ -152,7 +163,9 @@ class Visualizer:
         plt.ylabel("Température (°C)")
         plt.legend()
         plt.grid()
-        plt.show()
+        filepath = os.path.join(self.results_dir, "cooling_analysis.png")
+        plt.savefig(filepath, dpi=150, bbox_inches="tight")
+        plt.close()
 
     # =========================
     # ÉCOULEMENT
@@ -186,4 +199,6 @@ class Visualizer:
         plt.ylabel("Valeurs")
         plt.legend()
         plt.grid()
-        plt.show()
+        filepath = os.path.join(self.results_dir, "flow_analysis.png")
+        plt.savefig(filepath, dpi=150, bbox_inches="tight")
+        plt.close()
